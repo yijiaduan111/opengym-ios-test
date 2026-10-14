@@ -134,6 +134,12 @@ img{max-width:100%}
 a{color:var(--acc);text-decoration:none}
 :focus{outline:none}
 :focus-visible{outline:2.5px solid var(--acc);outline-offset:2px;border-radius:6px}
+/* Native controls need a comfortable finger target on a narrow iPhone. Keep the visual
+   treatment unchanged while giving the controls used during a workout a 44pt interaction box. */
+@media (max-width:600px){
+  .workout-list .iconbtn,.workout-list .stp button,.workout-list .setgo,.workout-list .chip{min-height:44px}
+  .workout-list input,.workout-list select,.workout-list textarea{scroll-margin-block:calc(var(--sat) + 72px) var(--sab)}
+}
 button,.chip,.tile,.item,.wday,.cal-d,.swatch,.hm-c,.lrow,.seg button,.stp button,.sld
 {-webkit-user-select:none;user-select:none}
 

@@ -308,29 +308,34 @@ zipalign -f -p 4 app-release-unsigned.apk aligned.apk
 apksigner sign --ks my.keystore --ks-key-alias opengym --out openGym.apk aligned.apk
 ```
 
-### iPhone — what's actually possible
+### iPhone — build, install and test from Windows
 
-Apple does not allow installing apps outside the App Store, so there is no `.ipa` download
-that would simply install. Your free options:
+Apple does not allow an unsigned `.ipa` to install directly. The supported Windows-first path is:
 
-- **Self-host + PWA** (recommended): open your instance in Safari → Share → *Add to Home
-  Screen*. Full-screen app, no expiry, plus sync and passkeys.
-- **Xcode free signing:** open `ios/` in Xcode with a free Apple ID as the team and run it
-  onto your own iPhone. Apple expires the signature after 7 days; re-run from Xcode to renew.
-- **AltStore:** automates that 7-day re-signing over Wi-Fi via a Mac companion app.
+- **Self-host + PWA:** open your instance in Safari → Share → *Add to Home Screen*. This is
+  the fastest option and has no signing expiry.
+- **Unsigned IPA + AltStore/SideStore or Sideloadly:** GitHub Actions builds the same Capacitor
+  bundle on a macOS runner. Download the IPA from the workflow artifact, then let the sideloading
+  tool sign it with your ordinary Apple ID. Free Apple ID signatures normally need refreshing
+  every 7 days and are limited to the devices Apple permits.
+- **Xcode free signing:** if you later gain access to a Mac, open `frontend/ios` in Xcode, choose
+  your Apple ID team, and run directly on the iPhone. This has the same free-signing limits.
 
-There is a `build:ios` job in [`.gitlab-ci.yml`](../.gitlab-ci.yml) for exactly that path: the
-same mobile bundle, `xcodebuild archive` without a signing identity, and an *unsigned* `.ipa`
-(plus `.sha256`) as job artifact — on a tag also under `opengym-ios/<version>/` in the package
-registry — for AltStore/Sideloadly users to sign with their own Apple ID. It needs a Mac: Xcode
-does not run on the Linux project runner, and gitlab.com's hosted macOS runners are not on the
-free tier. To switch it on, register a Mac as a project runner (shell executor; Xcode, CocoaPods
-and Node installed; give it a tag such as `macos`) and set the CI/CD variable `IOS_RUNNER_TAG`
-to that tag — the job then appears in every `main` and tag pipeline. Until that variable exists
-the job is not part of any pipeline, and it has not run yet, so expect a first round of fixes.
-A signed build (TestFlight, App Store) would additionally need an Apple Developer Program
-membership, the distribution certificate and profile as protected file variables, and an
-`-exportArchive` step — none of that is set up.
+The workflow is [`.github/workflows/ios.yml`](../.github/workflows/ios.yml). It runs on GitHub's
+macOS runner, executes `npm run build:mobile`, runs `xcodebuild archive` with signing disabled,
+and uploads the IPA, SHA-256 file and Xcode log as a 30-day artifact. It can be started from the
+Actions tab with **Run workflow**, or runs for changes to `frontend/` on `main` and pull requests.
+
+To verify an artifact on Windows:
+
+```powershell
+Get-FileHash .\openGym-1.4.1-unsigned.ipa -Algorithm SHA256
+Get-Content .\openGym-1.4.1-unsigned.ipa.sha256
+```
+
+The values must match before sideloading. A signed TestFlight/App Store build is deliberately a
+separate future step: it needs an Apple Developer Program membership, distribution certificate,
+provisioning profile, protected CI secrets, and `xcodebuild -exportArchive`.
 
 ### Release notes for maintainers
 

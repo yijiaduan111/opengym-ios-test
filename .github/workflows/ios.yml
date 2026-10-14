@@ -1,0 +1,91 @@
+name: iOS unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'frontend/**'
+      - 'scripts/catalogue/**'
+      - '.github/workflows/ios.yml'
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - 'scripts/catalogue/**'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Ensure CocoaPods is available
+        run: |
+          if ! command -v pod >/dev/null 2>&1; then
+            brew install cocoapods
+          fi
+          pod --version
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build and sync the mobile bundle
+        working-directory: frontend
+        run: npm run build:mobile
+
+      - name: Verify the synced mobile bundle
+        working-directory: frontend
+        run: node scripts/check-mobile-bundle.mjs
+
+      - name: Archive without signing
+        working-directory: frontend/ios/App
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('../../package.json').version")"
+          build="$(sed -n 's/^ *versionCode \([0-9]*\).*/\1/p' ../../android/app/build.gradle | sed -n '1p')"
+          test -n "$build"
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$PWD/build/App.xcarchive" \
+            MARKETING_VERSION="$version" \
+            CURRENT_PROJECT_VERSION="$build" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            archive | tee "$PWD/build/xcodebuild.log"
+          rm -rf Payload
+          mkdir Payload
+          cp -R build/App.xcarchive/Products/Applications/App.app Payload/
+          zip -qr "$GITHUB_WORKSPACE/openGym-$version-unsigned.ipa" Payload
+          shasum -a 256 "$GITHUB_WORKSPACE/openGym-$version-unsigned.ipa" > "$GITHUB_WORKSPACE/openGym-$version-unsigned.ipa.sha256"
+
+      - name: Upload IPA and build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: opengym-ios-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            openGym-*-unsigned.ipa
+            openGym-*-unsigned.ipa.sha256
+            frontend/ios/App/build/xcodebuild.log
